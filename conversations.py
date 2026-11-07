@@ -32,6 +32,17 @@ class GroundedDialogue(Dialogue):
         self.calls = 0
         self.plan = "starting the day"
         self.show_work = False
+        self.pending_text = ""
+
+    @staticmethod
+    def fallback_intent(text):
+        low = text.lower()
+        return next((label for keys, label in (
+            (("who", "job", "work", "doing", "occupation", "profession", "role"), "work"),
+            (("time", "night", "schedule"), "routine"),
+            (("neighbor", "villager"), "neighbors"),
+            (("help", "ask"), "help"),
+        ) if any(key in low for key in keys)), "unknown")
 
     def facts(self):
         if self.latest is None:
@@ -98,7 +109,7 @@ class GroundedDialogue(Dialogue):
 
     def _answer(self, busy):
         if self.llm.requesting or self.llm.error is not None:
-            label = "unknown" if self.llm.error is not None else self.llm.response()
+            label = self.fallback_intent(self.pending_text) if self.llm.error is not None else self.llm.response()
             if label is None:
                 return None
             self.llm.error = None
@@ -106,7 +117,8 @@ class GroundedDialogue(Dialogue):
             if speaker is None:
                 return None
             # Render after the request finishes, from the current observation and plan.
-            return self._line(speaker, self.response_for(str(label).strip().lower()))
+            label = str(label).lower().strip("` .!\"' \n\t")
+            return self._line(speaker, self.response_for(label))
         speakers = [s for s in self.waiting if s not in busy]
         if not speakers:
             return None
@@ -121,17 +133,12 @@ class GroundedDialogue(Dialogue):
         if self.calls < 3:
             self.calls += 1
             try:
-                if self.llm.request(model="small", messages=self._messages(speaker, text), max_tokens=16, timeout=15):
+                if self.llm.request(model="small", messages=self._messages(speaker, text), timeout=15):
                     self.asking = speaker
+                    self.pending_text = text
                     return None
             except Exception:
                 pass
         # Useful deterministic answers remain available without credentials or quota.
-        low = text.lower()
-        intent = next((label for keys, label in (
-            (("who", "job", "work", "doing"), "work"),
-            (("time", "night", "schedule"), "routine"),
-            (("neighbor", "villager"), "neighbors"),
-            (("help", "ask"), "help"),
-        ) if any(key in low for key in keys)), "unknown")
+        intent = self.fallback_intent(text)
         return self._line(speaker, self.response_for(intent))

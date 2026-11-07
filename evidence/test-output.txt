@@ -2,13 +2,13 @@
 platform darwin -- Python 3.12.14, pytest-8.3.4, pluggy-1.7.0
 rootdir: /Users/zhaoqianxue/Desktop/UA/GameAI/season5-rpg-three-branches
 plugins: anyio-4.13.0
-collected 125 items
+collected 126 items
 
 tests/test_agent.py ..                                                   [  1%]
 tests/test_dispatcher.py ................                                [ 14%]
-tests/test_episode.py ..                                                 [ 16%]
-tests/test_grounded_conversations.py ....                                [ 19%]
-tests/test_llm.py .............                                          [ 29%]
+tests/test_episode.py ..                                                 [ 15%]
+tests/test_grounded_conversations.py .....                               [ 19%]
+tests/test_llm.py .............                                          [ 30%]
 tests/test_llm_example.py .......                                        [ 35%]
 tests/test_local_play_config.py .......................................  [ 66%]
 tests/test_neighbor.py ..........                                        [ 74%]
@@ -27,4 +27,4 @@ tests/test_village.py::test_helpers_read_native_observation_values_and_build_nor
     gym.logger.warn("Casting input x to numpy array.")
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-================== 125 passed, 7 warnings in 76.74s (0:01:16) ==================
+================== 126 passed, 7 warnings in 63.93s (0:01:03) ==================

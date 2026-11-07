@@ -1,48 +1,52 @@
 # Season 5 — RPG: The Conversation
 
-**Zhaoqian Xue / purpleman / GitHub @ZhaoqianXue**
+Zhaoqian Xue / purpleman / GitHub @ZhaoqianXue
 
 ## Design goal
 
-Visitors should learn who the villagers are, why they do their jobs, and how their words match their current activities. They can ask about a visible prop or request a daytime walk toward a villager's workplace; distant or private facts receive an honest uncertainty statement.
+Visitors should learn who the villagers are, why they do their jobs, and how their words match their activities. They can ask about visible props or request a daytime walk toward a workplace; distant and private facts remain unverified.
 
-**Rating question (1–5):** How well did the villagers' replies and workplace tours match what they could see and what they were doing?
+Rating question (1–5): How well did the villagers' replies and workplace tours match what they could see and what they were doing?
 
-## Characters, knowledge, and behavior
+## Characters and knowledge
 
-The ten villagers retain the Neighbor template's work, midday meeting, brief visitor greeting, and night sleep. `PERSONAS` and `STORIES` in `conversations.py` provide authored identities and motives: Mira tends the pump for the gardeners, Rowan cares for notices, Tess repairs, Ash tends the hearth, Bell minds the bell, three traders have different attitudes, and Fern/Reed garden. These are authored character backgrounds, not claims inferred from hidden game state.
+Adapted from the official [Neighbor example](https://github.com/vox-deorum/game-agent-template/tree/examples/three_branches/neighbor). `PERSONAS` and `STORIES` in `conversations.py` give the ten residents authored identities: Mira tends the pump for the gardeners, Rowan keeps notices, Tess repairs, Ash tends the hearth, Bell minds the bell, three traders have different attitudes, and Fern/Reed garden. These backgrounds are design choices, not hidden-state observations.
 
-Each character knows its own selected routine and workplace. Current prop states come **only** from `props.seen()`; static placement does not establish a prop's current state. For example, a visible lantern is described from this tick's observation, a changed state replaces the old answer, and an unseen lantern remains unverified. The agent makes no claim to know another villager's private plans. Visitor statements never change world facts.
+Each resident knows its own selected routine and workplace. Current prop states come only from `props.seen()`: knowing a lantern's location does not establish whether it is lit. A changed visible state replaces the old answer; an unseen prop remains unverified. Visitor claims do not change facts, and residents cannot read one another's private plans.
 
-Free-form questions may use the platform's **small** LLM tier to choose one of five intents: work, routine, neighbors, help, or unknown. The code validates that label and renders the reply from current observations and authored knowledge. It does not speak unvalidated model prose. This trades conversational breadth for reliable facts. Exact prop questions, greetings, and workplace requests are scripted. Follow-ups requiring long conversation memory are not supported.
+## Conversation and behavior
 
-`BackgroundLLM` keeps movement running during requests. There is one outstanding call per resident, a 15-second request timeout, at most **three calls per resident per day** (30 for ten villagers), and a 16-token completion request. Neighbor small talk costs no model tokens. Missing credentials, exhausted quota, invalid responses, or exhausted call allowance fall back to a short scripted explanation or uncertainty. Replies are dropped when the listener leaves or a newer question supersedes them; answers are rendered against current facts when they arrive. Secrets belong in ignored `.env`, never source control; the platform supplies runtime credentials.
+The small LLM tier classifies free-form questions into five intents: work, routine, neighbors, help, or unknown. Code validates that label and renders an answer from current observations and authored knowledge. Unchecked model prose is never spoken. Greetings, exact prop questions, and workplace requests use scripts; long conversation history and pronoun-dependent follow-ups are not supported.
 
-“Show me your workplace” starts a temporary walk during the day, for up to 100 ticks while the visitor remains nearby. Night takes priority and the character refuses the request. The reply promises a walk toward the workplace, not guaranteed arrival through a crowd. Existing work and sleep resume afterward. Navigation retains the previous season's connected-region checks, cached approaches, soft crowd avoidance, and waypoint speed control.
+`BackgroundLLM` allows movement to continue while a request runs. Each resident has one outstanding request, a 15-second timeout, and at most three calls per day: 30 for ten residents. The prompt requests one label; platform quota bounds token use. Neighbor chat needs no model. Failed access, asynchronous errors, exhausted allowance, or unusable results receive a scripted answer or uncertainty. A pending answer is dropped when the listener leaves or asks a newer question. Credentials are never committed; the platform supplies runtime access.
 
-## Season 4 feedback and revision
+The normal day retains work, midday meetings, brief visitor greetings, and night sleep. "Show me your workplace" temporarily selects a walk for up to 100 ticks while the visitor stays nearby. Night takes priority and the resident refuses. The reply promises movement toward the workplace, not guaranteed arrival through a crowd. Navigation retains the prior connected-region checks, cached approaches, crowd penalties, and waypoint speed control.
 
-Season 4 received 3.6/5 from five peers, despite 100 automated completion scores. Peers found the schedules repetitive and wanted more than greetings and job labels. This revision adds distinct character motives, current-state questions, explicit limits on knowledge, and a conversation-triggered workplace walk. Neighbor greetings now identify the speaker and their work. The common day schedule remains a limitation; a completion score does not measure conversation quality.
+## Season 4 revision and reflection
 
-An attempted extra break schedule caused a prop-use regression in the full-day test and was removed. Porting the prior navigation also exposed float32 rounding at the interaction boundary: a prop could appear just within reach while the engine still rejected use. The approach now checks a small geometric margin and takes a short inward step before using a boundary prop. The route caller retains the standard three-argument interface while applying crowd costs to its graph. Keeping the day reliable mattered more than adding unverified variety.
+Season 4 received 3.6/5 from five peers despite 100 automated completion scores. Peers wanted more than repetitive greetings and job labels. This revision adds character motives, current-state questions, explicit knowledge limits, and a conversation-triggered workplace walk. The common schedule remains a limitation.
 
-## Reproduce and verification
+An extra break schedule caused a prop-use regression and was removed. Porting navigation also exposed float32 rounding at the use boundary; the approach now checks a small geometric margin before interacting. Keeping reliable behavior mattered more than unverified variety.
 
-Based on the official [Neighbor example](https://github.com/vox-deorum/game-agent-template/tree/examples/three_branches/neighbor), with the platform's downloaded ten-villager/day-night Season 5 settings. Use Python 3.12 and unchanged requirements.
+## Verification
+
+Use Python 3.12 and the unchanged pinned requirements. `season.json` contains the downloaded ten-villager/day-night Season 5 settings.
 
 ```sh
-python -m pip install -r requirements.txt -r requirements-dev.txt
 python -m sandbox test
 python -m sandbox eval --seeds 0 1 2
-python -m sandbox play --seed 0
+python -m sandbox play --seed 1
 ```
 
-`tests/test_grounded_conversations.py` checks a lit→unlit→unseen prop, an unknowable question, a pending reply with a changed plan, malformed model text, failed access, exhausted call allowance, and daytime/night workplace requests. Those model responses are test doubles, not evidence of successful upstream LLM calls. The supplied full-day check verifies movement, work in morning/evening, legal actions, and sleeping at home. Additional run results and visitor observations are recorded in `evidence/`.
+- Final checks: 126 passed in 63.93 seconds, with seven supplied Gymnasium casting warnings; `git diff --check` passed. Protected environment files and supplied tests were not edited.
+- Complete local evaluations: seeds 0/1/2 each scored 100.00. No development key was configured, so these do not prove upstream model success. One neighbor message was dropped by the recipient policy; the day completed.
+- Added behavioral tests cover lit→unlit→unseen facts, an unknowable question, changed plans during pending requests, malformed output, synchronous/asynchronous failures, exhausted allowance, and daytime/night workplace requests. Successful model outputs in these tests are doubles.
+- Actual seed-1 platform questions produced uncertainty about an unseen bell and secret future events, and accepted a workplace request. The replay records 154 LLM units, establishing actual upstream use. An occupation question was answered unhelpfully; that prompted a broader job fallback, retention of the pending question on errors, punctuation-tolerant parsing, and removal of a very small completion cap. The original cause was not verified.
 
-Final project checks: **125 passed**, with seven supplied Gymnasium input-casting warnings, in 76.74 seconds. `git diff --check` passed; the environment, manifest, dependencies, and supplied tests were not edited.
+Detailed messages, interrupted-session limits, and raw results are in `evidence/`. Completion scores do not measure conversation quality.
 
-## AI use and reflection
+## AI use
 
-This submission was developed with **OpenAI Codex**. Codex read the assignment and Season 4 feedback, adapted Neighbor, wrote the grounded dialogue and request handler, retained prior navigation fixes, added behavioral tests, ran checks, and drafted this README. The official template supplied the environment, routines, routing framework, and background LLM client. No sandbox, manifest, or dependency files were manually changed. Verification combines deterministic conversation scenarios, full seeded days, and recorded visitor observations; it does not imply that the student personally operated those tests.
+This submission was developed with OpenAI Codex. Codex read the assignment and feedback, adapted Neighbor, wrote dialogue and request handling, retained navigation fixes, added behavioral tests, ran checks and seeded days, operated platform visitor tests, and drafted this README. The official template supplied the environment, routine framework, routing, and background LLM client. This account of validation does not claim the student personally operated those tests.
 
-The main design lesson was to separate understanding a question from asserting a world fact. A model can recognize wording, while code reads the current visible state and refuses unsupported claims. The tradeoff is a smaller conversation vocabulary; open-ended storytelling and multi-turn references need further work.
+The main lesson was to separate understanding a question from asserting a world fact. A model can interpret wording, while code checks the current state and refuses unsupported claims. The smaller conversation vocabulary is the cost of that choice; broader dialogue still needs work.

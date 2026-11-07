@@ -56,7 +56,7 @@ def test_pending_reply_uses_current_plan_and_untrusted_output_is_not_spoken(conv
     guide.plan = "walking home"
     def finish():
         fake.requesting = False
-        return "work"
+        return "work."
     fake.response = finish
     assert "walking home" in guide.messages()[0]["text"]
     assert ask(guide, "And your life?") == []
@@ -70,8 +70,23 @@ def test_failed_request_and_budget_exhaustion_keep_useful_answers(conversation):
         raise RuntimeError("unavailable")
     guide.llm = SimpleNamespace(requesting=False, error=None, request=fail)
     assert "Mira" in ask(guide, "Who are you?")[0]["text"]
+    assert "Mira" in ask(guide, "Could you explain your occupation?")[0]["text"]
     guide.calls = 3
     assert "Mira" in ask(guide, "What is your job?")[0]["text"]
+
+
+def test_asynchronous_failure_retains_the_question(conversation):
+    guide, _ = conversation
+    fake = SimpleNamespace(requesting=False, error=None)
+    def start(**kwargs):
+        fake.requesting = True
+        return True
+    fake.request = start
+    guide.llm = fake
+    assert ask(guide, "Could you explain your occupation?") == []
+    fake.requesting = False
+    fake.error = RuntimeError("no successful model reply")
+    assert "Mira" in guide.messages()[0]["text"]
 
 
 def test_show_work_request_and_night_refusal(conversation):
