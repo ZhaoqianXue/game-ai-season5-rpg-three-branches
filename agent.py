@@ -33,6 +33,7 @@ from collections.abc import Mapping
 from typing import NamedTuple, cast
 
 import dialogue
+from conversations import GroundedDialogue, PERSONAS
 import routines
 import routing
 from sandbox.observation_types import ThreeBranchesAction, ThreeBranchesObservation
@@ -115,8 +116,9 @@ class Agent:
             # Whether the last action was a use, so the next tick can check that it worked.
             "tried_use": False,
         }
+        self.memory["components"] = routing.components(cast(dict, self.memory["graph"]))
         self._update_plan(observation)
-        self.dialogue = dialogue.Dialogue(f"a resident of Three Branches who works at the {resident.work}")
+        self.dialogue = GroundedDialogue(PERSONAS[slot])
         self.dialogue.observe(observation)
 
     def act(self, observation: ThreeBranchesObservation) -> ThreeBranchesAction:
@@ -134,6 +136,8 @@ class Agent:
             memory["visitor_handled"] = True
 
         self._update_plan(observation)
+        descriptions = {"tend": "working", "go_to": "walking", "gather_at": "meeting neighbors", "greet": "greeting the visitor", "sleep_at": "going home to sleep"}
+        self.dialogue.plan = f"{descriptions.get(str(memory['routine']), str(memory['routine']))} at {memory['goal']}"
         self._small_talk(observation)
 
         # Find the routine function in routines.py by its name and run it.
@@ -151,7 +155,11 @@ class Agent:
     def chat(self, inbox: list[dict[str, object]]) -> list[dict[str, str | None]]:
         """Read the messages heard this tick, and return this tick's lines."""
         self.dialogue.receive(inbox)
-        return self.dialogue.messages()
+        lines = self.dialogue.messages()
+        if isinstance(self.dialogue, GroundedDialogue) and self.dialogue.show_work:
+            self.memory["guide_until"] = day.tick(self.dialogue.latest) + 100
+            self.dialogue.show_work = False
+        return lines
 
     def _update_plan(self, observation: Mapping[str, object]) -> None:
         """Ask ``assign`` what to do now, and start a new plan whenever the answer changes."""
@@ -194,7 +202,8 @@ class Agent:
             return
         here = me.position(observation)
         nearest = min(neighbors, key=lambda person: geometry.distance(here, person["position"]))
-        if self.dialogue.say(str(nearest["id"]), dialogue.GOOD_DAY):
+        line = f"Good day from {PERSONAS[cast(int, memory['slot'])].split(',')[0]}. I'm taking a break from the {RESIDENTS[cast(int, memory['slot'])].work}."
+        if self.dialogue.say(str(nearest["id"]), line):
             memory["said_good_day"] = True
 
 
@@ -214,6 +223,9 @@ def assign(observation: Mapping[str, object], memory: dict[str, object]) -> tupl
     # is indoors, sleep_at returns None and the go_to fallback walks it home.
     if phase == "night":
         return "sleep_at", memory["home"]
+
+    if cast(int, memory.get("guide_until", -1)) > day.tick(observation) and visitor_nearby(observation):
+        return "go_to", work_prop
 
     # The visitor is within hearing range and this resident has not reacted yet.
     if visitor_nearby(observation) and not memory["visitor_handled"]:

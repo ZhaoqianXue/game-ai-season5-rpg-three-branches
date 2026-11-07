@@ -48,12 +48,27 @@ def go_to(observation: Mapping[str, object], memory: dict[str, object], goal: ob
     """
     here = me.position(observation)
     point = goal_point(observation, goal)
-    # Props and building centers are not walkable, so head for the nearest cell that is.
-    end = None if point is None else layout.nearest_walkable(observation, point)
-    if end is None:
-        return action.stand(me.heading(observation))
     graph = _graph(memory)
     start = _cell_here(observation)
+    regions = memory.get("components", {})
+    region = regions.get(start)
+    # Props and building centers are not walkable, so head for the nearest cell that is.
+    destinations = memory.setdefault("destinations", {})
+    key = None if point is None else (float(point["x"]), float(point["y"]), region)
+    if key not in destinations:
+        if len(destinations) >= 64:
+            destinations.clear()
+        end = None if point is None else layout.nearest_walkable(observation, point)
+        if end is not None and region is not None and regions.get((int(end["x"]), int(end["y"]))) != region:
+            # A cell beside a prop can be walkable yet enclosed by obstacles.
+            # Choose the closest approach in this resident's connected region.
+            candidates = (cell for cell in graph if regions.get(cell) == region)
+            closest = min(candidates, key=lambda cell: geometry.distance(_center(observation, cell), point), default=None)
+            end = None if closest is None else {"x": closest[0], "y": closest[1]}
+        destinations[key] = end
+    end = destinations[key]
+    if end is None:
+        return action.stand(me.heading(observation))
     if start not in graph:
         # Pressed against a wall or a prop, off the graph: step back onto the nearest walkable cell.
         nearest = layout.nearest_walkable(observation, here)
@@ -67,11 +82,26 @@ def go_to(observation: Mapping[str, object], memory: dict[str, object], goal: ob
     stalled = state.get("position") == here
     state["position"] = dict(here)
     if stalled or not path or path[-1] != end_cell or start not in path:
-        path = routing.path(graph, start, end_cell)
+        occupied = set()
+        if stalled:
+            for person in people.nearby(observation):
+                cell = layout.cell_at(observation, person["position"])
+                if cell is not None and (int(cell["x"]), int(cell["y"])) in graph:
+                    occupied.add((int(cell["x"]), int(cell["y"])))
+        # A soft penalty allows an alternative around a neighbor but never makes
+        # the only doorway unreachable. This is each villager's perceived crowd.
+        route_graph = ({cell: tuple((neighbor, cost + (8.0 if neighbor in occupied else 0.0))
+                                   for neighbor, cost in edges)
+                        for cell, edges in graph.items()} if occupied else graph)
+        path = routing.path(route_graph, start, end_cell)
         state["path"] = path
     if not path or start == end_cell:
         return action.stand(me.heading(observation))
-    return action.walk(geometry.heading_to(here, _center(observation, path[path.index(start) + 1])))
+    waypoint = _center(observation, path[path.index(start) + 1])
+    ground = layout.ground_at(observation, {"x": start[0], "y": start[1]})
+    limit = layout.SPEED_LIMITS.get(ground or "", 1.0)
+    speed = min(1.0, geometry.distance(here, waypoint) / max(limit, 0.1))
+    return action.walk(geometry.heading_to(here, waypoint), speed)
 
 
 def wander(observation: Mapping[str, object], memory: dict[str, object], goal: object):
@@ -98,6 +128,17 @@ def tend(observation: Mapping[str, object], memory: dict[str, object], goal: obj
     # be this prop, use it.
     usable = props.usable(observation)
     if usable is not None and usable["id"] == target["id"]:
+        # A float32 observation can round an engine position just outside use reach
+        # onto its boundary. Require a small geometric margin before commanding use.
+        here = me.position(observation)
+        point = _prop_center(observation, target)
+        distance = max(geometry.distance(here, point), 0.001)
+        away = {axis: float(here[axis]) + 0.02 * (float(here[axis]) - point[axis]) / distance
+                for axis in ("x", "y")}
+        probe = dict(observation, self=dict(observation["self"], position=away))
+        comfortable = props.usable(probe)
+        if comfortable is None or comfortable["id"] != target["id"]:
+            return action.walk(geometry.heading_to(here, point), 0.08)
         return action.stand(me.heading(observation), "use")
     # Within reach, but the use command would pick something else (a wall is in the way, or
     # another prop is nearer). Shuffle to the closest neighboring cell with a clear view.

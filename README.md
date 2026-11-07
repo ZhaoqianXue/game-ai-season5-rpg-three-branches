@@ -1,96 +1,48 @@
-# Days at Three Branches: Neighbor agent
+# Season 5 — RPG: The Conversation
 
-Neighbor is the Season 5 starting point: ten residents who walk to work at dawn, work through the morning, meet at the inn at midday, work again in the evening, and walk home to sleep at night. They greet the visitor and say good day to each other. The day is deliberately plain. It shows how the pieces fit together, not what a good village looks like, which is yours to design. This branch is already a runnable agent repository. Edit `agent.py`, `routines.py`, `routing.py`, and `dialogue.py` directly.
+**Zhaoqian Xue / purpleman / GitHub @ZhaoqianXue**
 
-Start with the [Getting Started guide](https://vox-deorum.github.io/game-sandbox/students/getting-started/). Then run these commands from this folder:
+## Design goal
 
-```console
-python -m sandbox watch --preset season_5  # watch Neighbor's day beside the scripted visitor
-python -m sandbox play --preset season_5   # walk through the village as the visitor yourself
-python -m sandbox test                     # run the provided checks
-python -m sandbox eval                     # run repeatable automated days
+Visitors should learn who the villagers are, why they do their jobs, and how their words match their current activities. They can ask about a visible prop or request a daytime walk toward a villager's workplace; distant or private facts receive an honest uncertainty statement.
+
+**Rating question (1–5):** How well did the villagers' replies and workplace tours match what they could see and what they were doing?
+
+## Characters, knowledge, and behavior
+
+The ten villagers retain the Neighbor template's work, midday meeting, brief visitor greeting, and night sleep. `PERSONAS` and `STORIES` in `conversations.py` provide authored identities and motives: Mira tends the pump for the gardeners, Rowan cares for notices, Tess repairs, Ash tends the hearth, Bell minds the bell, three traders have different attitudes, and Fern/Reed garden. These are authored character backgrounds, not claims inferred from hidden game state.
+
+Each character knows its own selected routine and workplace. Current prop states come **only** from `props.seen()`; static placement does not establish a prop's current state. For example, a visible lantern is described from this tick's observation, a changed state replaces the old answer, and an unseen lantern remains unverified. The agent makes no claim to know another villager's private plans. Visitor statements never change world facts.
+
+Free-form questions may use the platform's **small** LLM tier to choose one of five intents: work, routine, neighbors, help, or unknown. The code validates that label and renders the reply from current observations and authored knowledge. It does not speak unvalidated model prose. This trades conversational breadth for reliable facts. Exact prop questions, greetings, and workplace requests are scripted. Follow-ups requiring long conversation memory are not supported.
+
+`BackgroundLLM` keeps movement running during requests. There is one outstanding call per resident, a 15-second request timeout, at most **three calls per resident per day** (30 for ten villagers), and a 16-token completion request. Neighbor small talk costs no model tokens. Missing credentials, exhausted quota, invalid responses, or exhausted call allowance fall back to a short scripted explanation or uncertainty. Replies are dropped when the listener leaves or a newer question supersedes them; answers are rendered against current facts when they arrive. Secrets belong in ignored `.env`, never source control; the platform supplies runtime credentials.
+
+“Show me your workplace” starts a temporary walk during the day, for up to 100 ticks while the visitor remains nearby. Night takes priority and the character refuses the request. The reply promises a walk toward the workplace, not guaranteed arrival through a crowd. Existing work and sleep resume afterward. Navigation retains the previous season's connected-region checks, cached approaches, soft crowd avoidance, and waypoint speed control.
+
+## Season 4 feedback and revision
+
+Season 4 received 3.6/5 from five peers, despite 100 automated completion scores. Peers found the schedules repetitive and wanted more than greetings and job labels. This revision adds distinct character motives, current-state questions, explicit limits on knowledge, and a conversation-triggered workplace walk. Neighbor greetings now identify the speaker and their work. The common day schedule remains a limitation; a completion score does not measure conversation quality.
+
+An attempted extra break schedule caused a prop-use regression in the full-day test and was removed. Porting the prior navigation also exposed float32 rounding at the interaction boundary: a prop could appear just within reach while the engine still rejected use. The approach now checks a small geometric margin and takes a short inward step before using a boundary prop. The route caller retains the standard three-argument interface while applying crowd costs to its graph. Keeping the day reliable mattered more than adding unverified variety.
+
+## Reproduce and verification
+
+Based on the official [Neighbor example](https://github.com/vox-deorum/game-agent-template/tree/examples/three_branches/neighbor), with the platform's downloaded ten-villager/day-night Season 5 settings. Use Python 3.12 and unchanged requirements.
+
+```sh
+python -m pip install -r requirements.txt -r requirements-dev.txt
+python -m sandbox test
+python -m sandbox eval --seeds 0 1 2
+python -m sandbox play --seed 0
 ```
 
-The `season_5` preset runs ten villagers with day and night on, and Season 5 enables the LLM API. The [`environment.md`](environment.md) guide explains presets, the visitor, and the other command options.
+`tests/test_grounded_conversations.py` checks a lit→unlit→unseen prop, an unknowable question, a pending reply with a changed plan, malformed model text, failed access, exhausted call allowance, and daytime/night workplace requests. Those model responses are test doubles, not evidence of successful upstream LLM calls. The supplied full-day check verifies movement, work in morning/evening, legal actions, and sleeping at home. Additional run results and visitor observations are recorded in `evidence/`.
 
-## How Neighbor works
+Final project checks: **125 passed**, with seven supplied Gymnasium input-casting warnings, in 76.74 seconds. `git diff --check` passed; the environment, manifest, dependencies, and supplied tests were not edited.
 
-On every tick, each villager asks `assign` in `agent.py` what to do right now. The answer is a routine name and a goal, such as `("tend", "stall_2")`. The villager then runs that routine from `routines.py`, which returns the action for this tick.
+## AI use and reflection
 
-- `agent.py` holds the schedule. The `RESIDENTS` table has one row per villager, saying which type of prop it works at and where it spends midday. `assign` reads the table and the day phase to pick the routine.
-- `routines.py` holds the routines, such as `go_to`, `tend`, `gather_at`, `greet`, and `sleep_at`. Each one returns an action for this tick, or `None` when it cannot do its job right now. On `None`, the villager walks toward its goal with `go_to` instead. `wander`, `follow`, `avoid`, `rest`, and `watch` are there for you to use, although the plain day does not.
-- `routing.py` finds walking paths for `go_to` with A\* search over a graph of the village's walkable cells.
-- `dialogue.py` handles every conversation, with the visitor and between villagers. It answers the visitor through the optional LLM API in the background, so a routine tick never waits for it, and answers other villagers with canned lines.
-- `tests/test_neighbor.py` checks each routine on constructed observations, the visitor reaction, finding a free work prop, both kinds of conversation, and a full Season 5 day in which every resident moves, works, and ends up asleep at home.
+This submission was developed with **OpenAI Codex**. Codex read the assignment and Season 4 feedback, adapted Neighbor, wrote the grounded dialogue and request handler, retained prior navigation fixes, added behavioral tests, ran checks, and drafted this README. The official template supplied the environment, routines, routing framework, and background LLM client. No sandbox, manifest, or dependency files were manually changed. Verification combines deterministic conversation scenarios, full seeded days, and recorded visitor observations; it does not imply that the student personally operated those tests.
 
-Each villager keeps its own memory dictionary, because every villager runs in a separate `Agent` instance. So villagers work things out for themselves instead of sharing a plan:
-
-- **Where to work.** At reset, a villager lists every prop of its work type, nearest to its home first, and starts with the nearest. When its own use fails because someone else holds the prop, it moves on to the next one.
-- **When to go home.** At night, a villager walks home. Inside, it heads for the middle of the room and lies down once it stands still, so its housemate can still get past the doorway.
-- **The visitor.** When the visitor comes within hearing range, a villager greets them once, for 40 ticks, then goes back to its day until the visitor leaves and returns.
-
-> _How does `go_to` find its way?_ In `reset`, `build_graph` in `routing.py` turns every walkable cell of the village into a graph node, using `layout.walkable`, `layout.can_step`, and `layout.ground_at`. `go_to` picks the walkable cell nearest its goal with `layout.nearest_walkable`, then asks `routing.path` for a route with [A\* search](https://en.wikipedia.org/wiki/A*_search_algorithm). You may change how the graph is built or replace the route finder.
-
-### How villagers talk
-
-Every line a villager hears goes through `Dialogue` in `dialogue.py`:
-
-1. `receive` keeps each speaker's newest line waiting for an answer. A neighbor's line to everyone is only overheard, so a crowd does not all answer at once.
-2. `messages` answers one waiting line per tick, the visitor's first. `scripted_answer` decides how: it returns a line to say right away, or `None` to ask the LLM.
-3. An LLM answer arrives on a later tick. If the speaker walks away first, the answer is dropped.
-
-A villager can also start a conversation with `say(player_id, text)`, or `say(None, text)` to speak to everyone in hearing range. At the midday meeting, `_small_talk` in `agent.py` uses it to say good day to the nearest neighbor, who answers with a canned line. `NEIGHBOR_TURNS` caps how many lines a villager says to one neighbor, so two villagers never answer each other forever.
-
-Keep in mind who hears what. Watchers and replays show every line, but the visitor only sees lines sent to them and lines sent to everyone. A direct chat between two villagers is invisible to a visitor standing next to them.
-
-## Your assignment
-
-The day never adapts: every resident follows the same schedule every day. Replace it with your own village story. Decide who should do what, where, and when those choices should change as the day and the visitor move around them.
-
-A good order to work in:
-
-1. **Change the table.** Edit the rows of `RESIDENTS` in `agent.py`, for example to send some residents to a different building at midday. Run `python -m sandbox watch --preset season_5` to see the result.
-2. **Add fields to the table.** Each field of `Resident` is one way residents can differ. To add one, give `Resident` a new field, fill it in on the rows, and read it in `assign`. For example, to give each resident its own reaction to the visitor:
-
-   ```python
-   class Resident(NamedTuple):
-       work: str
-       meet: str
-       react: str = "greet"  # new: how this resident reacts to the visitor
-   ```
-
-   A field with a default, like `react` here, only needs a value on the rows that differ, such as `Resident(work="plot", meet="inn", react="follow")`. Then, in `assign`, return `resident.react, "player_0"` instead of `VISITOR_REACTION, "player_0"`. Fields can hold anything that helps you describe a resident: a persona, a favourite bench, a list of places to visit, or the tick they wake up.
-
-3. **Rewrite `assign`.** It runs on every tick, and a villager switches plans whenever its answer changes. Its checks run in priority order, so night comes first and the ordinary schedule comes last. Add your own checks, such as reacting to the bell with `day.bell_ringing(observation)`.
-4. **Add routines.** Write a function in `routines.py` with the same `(observation, memory, goal)` shape as the others, then return its name from `assign`. The comment at the top of `routines.py` explains the shape. Tunable numbers, such as how far `follow` stays back, sit near the top of that file.
-5. **Change how villagers talk.** `scripted_answer` in `dialogue.py` chooses between a scripted line and an LLM answer, and `_messages` writes the prompt that the LLM sees. To let the LLM talk between villagers, return `None` from `scripted_answer` for them too. Ten villagers talking to each other can use up your budget and request-rate limit quickly (see [Using the LLM API](llm.md)), so keep `NEIGHBOR_TURNS` small. To start more conversations, call `self.dialogue.say` from `act`, as `_small_talk` does.
-
-Run `python -m sandbox test` after each change. The provided tests check the example as shipped, so update or replace a test when you deliberately change the behavior it checks.
-
-## Files you will use
-
-| Path | Purpose |
-| --- | --- |
-| `agent.py` | Assigns each villager a routine and goal, then runs it. |
-| `routines.py` | Defines Neighbor's routines. |
-| `routing.py` | Builds the route graph and finds paths with A\* search. |
-| `dialogue.py` | Talks with the visitor and other villagers without blocking a routine tick. |
-| `environment.md` | Explains the village rules, helpers, observations, and settings. |
-| `manifest.json` | Names the agent class for a submission. |
-| `season.json` | Holds optional local season settings downloaded from My Submissions. |
-| `tests/` | Contains the checks your submission should pass. |
-| `sandbox/` | Provides the local game, commands, helpers, and observation types. Do not edit it. |
-
-Leave `sandbox/`, `requirements.in`, and `requirements.txt` unchanged. The pinned packages match the server. Ask your instructor before adding a package.
-
-When your agent is ready, follow the shared [submitting guide](https://vox-deorum.github.io/game-sandbox/students/submitting/). For the optional `learn` and `chat` hooks, see the shared [agent interface](https://vox-deorum.github.io/game-sandbox/students/agent-interface/).
-
-## Optional LLM API
-
-Season 5 enables model calls, so follow [Using the LLM API](llm.md) to set them up. Copy `.env.example` to `.env`, add the endpoint and key, and never commit either secret.
-
-Test the connection with:
-
-```console
-python -m sandbox llm
-```
+The main design lesson was to separate understanding a question from asserting a world fact. A model can recognize wording, while code reads the current visible state and refuses unsupported claims. The tradeoff is a smaller conversation vocabulary; open-ended storytelling and multi-turn references need further work.
